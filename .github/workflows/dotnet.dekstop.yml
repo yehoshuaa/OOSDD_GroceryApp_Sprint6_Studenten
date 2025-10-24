@@ -20,11 +20,6 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      # 2) (Aanrader) Respecteer .NET 8 lokaal/CI via global.json (sla over als je 'm al hebt)
-      # - Maak in de repo een global.json met:
-      # {
-      #   "sdk": { "version": "8.0.4xx", "rollForward": "latestFeature", "allowPrerelease": false }
-      # }
 
       # 3) Installeer MAUI workload [werkbelasting]
       - name: Install MAUI workload
@@ -39,25 +34,24 @@ jobs:
         run: dotnet test TestCore/TestCore.csproj -c Release --no-build --logger "trx;LogFileName=test-results.trx"
 
       # --- WINDOWS BUILD ---
-      # Tip: restore met specifiek TFM [doelkader] om iOS/MacCatalyst te negeren in CI
-      - name: Restore (Windows TFM only)
-        run: dotnet restore Grocery.App/Grocery.App.csproj -f net8.0-windows10.0.19041.0
+      # - name: Restore (Windows TFM only)
+      #   run: dotnet restore Grocery.App/Grocery.App.csproj -f net8.0-windows10.0.19041.0
 
-      - name: Publish MAUI Windows
-        run: >
-          dotnet publish Grocery.App/Grocery.App.csproj
-          -c Release
-          -f net8.0-windows10.0.19041.0
-          -r win-x64
-          -p:PublishReadyToRun=false
-          --self-contained true
-          -o ./artifacts/windows
+      # - name: Publish MAUI Windows
+      #   run: >
+      #     dotnet publish Grocery.App/Grocery.App.csproj
+      #     -c Release
+      #     -f net8.0-windows10.0.19041.0
+      #     -r win-x64
+      #     -p:PublishReadyToRun=false
+      #     --self-contained true
+      #     -o ./artifacts/windows
 
-      - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: GroceryApp-Windows
-          path: ./artifacts/windows
+      # - name: Upload Windows Artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: GroceryApp-Windows
+      #     path: ./artifacts/windows
 
       # --- ANDROID BUILD ---
       # Vereist Java 17 en Android SDK [softwareontwikkelkit]
