@@ -1,45 +1,129 @@
-﻿using Grocery.Core.Interfaces.Repositories;
+﻿// Grocery.Core.Data/Repositories/ProductRepository.cs
+using System.Globalization;
+using Microsoft.Data.Sqlite;
+using Grocery.Core.Data;
+using Grocery.Core.Interfaces.Repositories;
 using Grocery.Core.Models;
 
 namespace Grocery.Core.Data.Repositories
 {
-    public class ProductRepository : IProductRepository
+    public class ProductRepository : DatabaseConnection, IProductRepository
     {
-        private readonly List<Product> products;
         public ProductRepository()
         {
-            products = [
-                new Product(1, "Melk", 300, new DateOnly(2025, 9, 25), 0.95m),
-                new Product(2, "Kaas", 100, new DateOnly(2025, 9, 30), 7.98m),
-                new Product(3, "Brood", 400, new DateOnly(2025, 9, 12), 2.19m),
-                new Product(4, "Cornflakes", 0, new DateOnly(2025, 12, 31), 1.48m)];
+            CreateTable(@"
+CREATE TABLE IF NOT EXISTS Product (
+  Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  Name      TEXT    NOT NULL,
+  Stock     INTEGER NOT NULL,
+  ShelfLife TEXT    NULL,
+  Price     REAL    NOT NULL
+);
+");
         }
+
+        private static string? ToIso(DateOnly d) =>
+            d == default ? null : d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        private static DateOnly FromIsoOrDefault(string? s) =>
+            DateOnly.TryParseExact(s ?? "", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : default;
+
         public List<Product> GetAll()
         {
-            return products;
+            var list = new List<Product>();
+            OpenConnection();
+            try
+            {
+                using var cmd = Connection.CreateCommand();
+                cmd.CommandText = "SELECT Id, Name, Stock, ShelfLife, Price FROM Product ORDER BY Name;";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    list.Add(new Product(
+                        r.GetInt32(0),
+                        r.GetString(1),
+                        r.GetInt32(2),
+                        FromIsoOrDefault(r.IsDBNull(3) ? null : r.GetString(3)),
+                        Convert.ToDecimal(r.GetDouble(4))));
+                }
+            }
+            finally { CloseConnection(); }
+            return list;
         }
 
         public Product? Get(int id)
         {
-            return products.FirstOrDefault(p => p.Id == id);
+            Product? p = null;
+            OpenConnection();
+            try
+            {
+                using var cmd = Connection.CreateCommand();
+                cmd.CommandText = "SELECT Id, Name, Stock, ShelfLife, Price FROM Product WHERE Id=@id;";
+                cmd.Parameters.AddWithValue("@id", id);
+                using var r = cmd.ExecuteReader();
+                if (r.Read())
+                {
+                    p = new Product(
+                        r.GetInt32(0),
+                        r.GetString(1),
+                        r.GetInt32(2),
+                        FromIsoOrDefault(r.IsDBNull(3) ? null : r.GetString(3)),
+                        Convert.ToDecimal(r.GetDouble(4)));
+                }
+            }
+            finally { CloseConnection(); }
+            return p;
         }
 
         public Product Add(Product item)
         {
-            throw new NotImplementedException();
-        }
-
-        public Product? Delete(Product item)
-        {
-            throw new NotImplementedException();
+            OpenConnection();
+            try
+            {
+                using var cmd = Connection.CreateCommand();
+                cmd.CommandText = @"
+INSERT INTO Product (Name, Stock, ShelfLife, Price)
+VALUES (@n, @s, @life, @p);
+SELECT last_insert_rowid();";
+                cmd.Parameters.AddWithValue("@n", item.Name);
+                cmd.Parameters.AddWithValue("@s", item.Stock);
+                cmd.Parameters.AddWithValue("@life", (object?)ToIso(item.ShelfLife) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@p", item.Price);
+                item.Id = Convert.ToInt32(cmd.ExecuteScalar());
+                return item;
+            }
+            finally { CloseConnection(); }
         }
 
         public Product? Update(Product item)
         {
-            Product? product = products.FirstOrDefault(p => p.Id == item.Id);
-            if (product == null) return null;
-            product.Id = item.Id;
-            return product;
+            OpenConnection();
+            try
+            {
+                using var cmd = Connection.CreateCommand();
+                cmd.CommandText = @"
+UPDATE Product SET Name=@n, Stock=@s, ShelfLife=@life, Price=@p
+WHERE Id=@id;";
+                cmd.Parameters.AddWithValue("@n", item.Name);
+                cmd.Parameters.AddWithValue("@s", item.Stock);
+                cmd.Parameters.AddWithValue("@life", (object?)ToIso(item.ShelfLife) ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@p", item.Price);
+                cmd.Parameters.AddWithValue("@id", item.Id);
+                return cmd.ExecuteNonQuery() > 0 ? item : null;
+            }
+            finally { CloseConnection(); }
+        }
+
+        public Product? Delete(Product item)
+        {
+            OpenConnection();
+            try
+            {
+                using var cmd = Connection.CreateCommand();
+                cmd.CommandText = "DELETE FROM Product WHERE Id=@id;";
+                cmd.Parameters.AddWithValue("@id", item.Id);
+                return cmd.ExecuteNonQuery() > 0 ? item : null;
+            }
+            finally { CloseConnection(); }
         }
     }
 }
