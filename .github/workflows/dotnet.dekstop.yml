@@ -1,0 +1,56 @@
+name: Build MAUI App
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    # Restore dependencies
+    - name: Restore
+      run: dotnet restore Grocery.App/Grocery.App.csproj
+
+    # --- Build Windows ---
+    - name: Build MAUI Windows
+      run: dotnet publish Grocery.App/Grocery.App.csproj -c Release -f net8.0-windows10.0.19041.0 -r win-x64 -p:PublishReadyToRun=false --self-contained true -o ./artifacts/windows
+
+    # Upload Windows artifact
+    - name: Upload Windows Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GroceryApp-Windows
+        path: ./artifacts/windows
+
+    # --- Run TestCore (unit tests) ---
+    - name: Restore TestCore
+      run: dotnet restore TestCore/TestCore.csproj
+
+    - name: Build TestCore
+      run: dotnet build TestCore/TestCore.csproj -c Release --no-restore
+
+    - name: Run Unit Tests
+      run: dotnet test TestCore/TestCore.csproj -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+    # --- Build Android ---
+    - name: Build MAUI Android
+      run: dotnet publish Grocery.App/Grocery.App.csproj -c Release -f net8.0-android -p:AndroidPackageFormat=apk -o ./artifacts/android
+
+    # Upload Android artifact
+    - name: Upload Android Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GroceryApp-Android
+        path: ./artifacts/android
