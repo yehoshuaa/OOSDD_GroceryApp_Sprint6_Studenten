@@ -11,46 +11,84 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
+      # 1) .NET 8 SDK [softwareontwikkelkit]
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-    # Restore dependencies
-    - name: Restore
-      run: dotnet restore Grocery.App/Grocery.App.csproj
+      # 2) (Aanrader) Respecteer .NET 8 lokaal/CI via global.json (sla over als je 'm al hebt)
+      # - Maak in de repo een global.json met:
+      # {
+      #   "sdk": { "version": "8.0.4xx", "rollForward": "latestFeature", "allowPrerelease": false }
+      # }
 
-    # --- Build Windows ---
-    - name: Build MAUI Windows
-      run: dotnet publish Grocery.App/Grocery.App.csproj -c Release -f net8.0-windows10.0.19041.0 -r win-x64 -p:PublishReadyToRun=false --self-contained true -o ./artifacts/windows
+      # 3) Installeer MAUI workload [werkbelasting]
+      - name: Install MAUI workload
+        run: dotnet workload install maui
 
-    # Upload Windows artifact
-    - name: Upload Windows Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: GroceryApp-Windows
-        path: ./artifacts/windows
+      # --- TESTS ---
+      - name: Restore TestCore
+        run: dotnet restore TestCore/TestCore.csproj
+      - name: Build TestCore
+        run: dotnet build TestCore/TestCore.csproj -c Release --no-restore
+      - name: Run Unit Tests
+        run: dotnet test TestCore/TestCore.csproj -c Release --no-build --logger "trx;LogFileName=test-results.trx"
 
-    # --- Run TestCore (unit tests) ---
-    - name: Restore TestCore
-      run: dotnet restore TestCore/TestCore.csproj
+      # --- WINDOWS BUILD ---
+      # Tip: restore met specifiek TFM [doelkader] om iOS/MacCatalyst te negeren in CI
+      - name: Restore (Windows TFM only)
+        run: dotnet restore Grocery.App/Grocery.App.csproj -f net8.0-windows10.0.19041.0
 
-    - name: Build TestCore
-      run: dotnet build TestCore/TestCore.csproj -c Release --no-restore
+      - name: Publish MAUI Windows
+        run: >
+          dotnet publish Grocery.App/Grocery.App.csproj
+          -c Release
+          -f net8.0-windows10.0.19041.0
+          -r win-x64
+          -p:PublishReadyToRun=false
+          --self-contained true
+          -o ./artifacts/windows
 
-    - name: Run Unit Tests
-      run: dotnet test TestCore/TestCore.csproj -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GroceryApp-Windows
+          path: ./artifacts/windows
 
-    # --- Build Android ---
-    - name: Build MAUI Android
-      run: dotnet publish Grocery.App/Grocery.App.csproj -c Release -f net8.0-android -p:AndroidPackageFormat=apk -o ./artifacts/android
+      # --- ANDROID BUILD ---
+      # Vereist Java 17 en Android SDK [softwareontwikkelkit]
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    # Upload Android artifact
-    - name: Upload Android Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: GroceryApp-Android
-        path: ./artifacts/android
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # (Optioneel maar netjes) accepteer licenties
+      - name: Accept Android licenses
+        shell: bash
+        run: yes | sdkmanager --licenses
+
+      # Specifieke restore voor Android TFM [doelkader]
+      - name: Restore (Android TFM only)
+        run: dotnet restore Grocery.App/Grocery.App.csproj -f net8.0-android
+
+      - name: Publish MAUI Android (APK)
+        run: >
+          dotnet publish Grocery.App/Grocery.App.csproj
+          -c Release
+          -f net8.0-android
+          -p:AndroidPackageFormat=apk
+          -o ./artifacts/android
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GroceryApp-Android
+          path: ./artifacts/android
